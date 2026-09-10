@@ -1,8 +1,11 @@
 package com.aviad.studiocam
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,7 +13,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -114,9 +119,43 @@ private fun RecordingScreen() {
     var isRecording by remember { mutableStateOf(false) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+    var activeRecording by remember { mutableStateOf<Recording?>(null) }
+
+    fun startRecording() {
+        val capture = videoCapture ?: return
+        val name = "StudioCam_${System.currentTimeMillis()}.mp4"
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, name)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/StudioCam")
+            }
+        }
+        val outputOptions = MediaStoreOutputOptions.Builder(
+            context.contentResolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(contentValues).build()
+
+        // Audio is intentionally not attached to this recording yet - the processed
+        // channel audio (with reverb/delay applied) will be muxed in once the Oboe
+        // engine lands, instead of the raw phone mic.
+        activeRecording = capture.output
+            .prepareRecording(context, outputOptions)
+            .start(ContextCompat.getMainExecutor(context)) { }
+    }
+
+    fun stopRecording() {
+        activeRecording?.stop()
+        activeRecording = null
+    }
 
     LaunchedEffect(isRecording) {
         elapsedSeconds = 0
+        if (isRecording) {
+            startRecording()
+        } else {
+            stopRecording()
+        }
         while (isRecording) {
             kotlinx.coroutines.delay(1000)
             elapsedSeconds++
@@ -206,16 +245,28 @@ private fun RecordingScreen() {
     }
 
     if (showMixer) {
+        var selectedTab by remember { mutableStateOf(0) }
         ModalBottomSheet(onDismissRequest = { showMixer = false }, sheetState = sheetState) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("AUDIO MIXER", color = TextSecondary, fontSize = 10.sp, letterSpacing = 1.5.sp)
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextSecondary)
                 }
+                Spacer(Modifier.height(10.dp))
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                ) {
+                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text(channelA.name) })
+                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text(channelB.name) })
+                }
                 Spacer(Modifier.height(12.dp))
-                ChannelStrip(state = channelA, availableInputs = inputOptions)
-                Spacer(Modifier.height(12.dp))
-                ChannelStrip(state = channelB, availableInputs = inputOptions)
+                if (selectedTab == 0) {
+                    ChannelStrip(state = channelA, availableInputs = inputOptions)
+                } else {
+                    ChannelStrip(state = channelB, availableInputs = inputOptions)
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }

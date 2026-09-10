@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -100,11 +101,33 @@ fun ChannelStrip(
         HorizontalDivider(color = Color(0xFF1C1C1C))
         Spacer(Modifier.height(10.dp))
 
-        EffectBlock(title = "REVERB", state = state.reverb, param2Label = "Size")
-        Spacer(Modifier.height(12.dp))
-        EffectBlock(title = "DELAY", state = state.delay, param2Label = "Feedback")
+        var effectsExpanded by remember { mutableStateOf(false) }
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { effectsExpanded = !effectsExpanded },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("אפקטים", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(18.dp).rotateSafe(effectsExpanded)
+            )
+        }
+
+        if (effectsExpanded) {
+            Spacer(Modifier.height(10.dp))
+            EffectBlock(title = "REVERB", state = state.reverb, param2Label = "Size")
+            Spacer(Modifier.height(12.dp))
+            EffectBlock(title = "DELAY", state = state.delay, param2Label = "Feedback")
+        }
     }
 }
+
+@Composable
+private fun Modifier.rotateSafe(expanded: Boolean): Modifier =
+    this.then(Modifier.graphicsLayer(rotationZ = if (expanded) 180f else 0f))
 
 @Composable
 private fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {

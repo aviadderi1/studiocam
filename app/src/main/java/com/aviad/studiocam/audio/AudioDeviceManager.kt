@@ -25,19 +25,35 @@ class AudioDeviceManager(private val context: Context) {
         for (device in devices) {
             val friendly = friendlyName(device)
             val channelCount = device.channelCounts.maxOrNull()?.takeIf { it > 0 } ?: 1
-            if (device.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                device.type == AudioDeviceInfo.TYPE_USB_HEADSET
-            ) {
-                // USB interfaces: expose each physical input separately
-                val exposedChannels = channelCount.coerceAtLeast(2)
-                for (ch in 0 until exposedChannels) {
-                    options.add(InputOption(device, "$friendly · Input ${ch + 1}", ch))
+
+            when (device.type) {
+                AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> {
+                    // USB interfaces: expose each physical input separately
+                    val exposedChannels = channelCount.coerceAtLeast(2)
+                    for (ch in 0 until exposedChannels) {
+                        options.add(InputOption(device, "$friendly · כניסה ${ch + 1}", ch))
+                    }
                 }
-            } else {
-                options.add(InputOption(device, friendly, 0))
+                AudioDeviceInfo.TYPE_BUILTIN_MIC -> {
+                    // Only offered as a fallback when no USB interface is present
+                    options.add(InputOption(device, friendly, 0))
+                }
+                else -> {
+                    // Ignore telephony, FM tuner, remote submix, wired headset mic, etc. -
+                    // these aren't relevant recording sources for this app
+                }
             }
         }
-        return options
+
+        val hasUsb = options.any {
+            it.deviceInfo.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                it.deviceInfo.type == AudioDeviceInfo.TYPE_USB_HEADSET
+        }
+        return if (hasUsb) {
+            options.filterNot { it.deviceInfo.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+        } else {
+            options
+        }
     }
 
     private fun friendlyName(device: AudioDeviceInfo): String {
